@@ -16,9 +16,11 @@ import kotlinx.coroutines.launch
         StudyMaterial::class,
         AppPreferences::class,
         AiGuidanceCache::class,
-        ExamCountdown::class
+        ExamCountdown::class,
+        StudyNote::class,
+        StudySession::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class SscDatabase : RoomDatabase() {

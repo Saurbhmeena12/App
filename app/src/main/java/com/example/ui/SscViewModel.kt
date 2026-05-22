@@ -29,6 +29,21 @@ class SscViewModel(application: Application) : AndroidViewModel(application) {
     val studyMaterials: StateFlow<List<StudyMaterial>>
     val aiGuidance: StateFlow<AiGuidanceCache?>
     val examCountdowns: StateFlow<List<ExamCountdown>>
+    val studyNotes: StateFlow<List<StudyNote>>
+    val studySessions: StateFlow<List<StudySession>>
+
+    // --- Active Study Timer Mode States ---
+    var isStudyTimerActive by mutableStateOf(false)
+    var studyTimerSecondsLeft by mutableStateOf(0)
+    var studyTimerTotalDuration by mutableStateOf(0)
+    var studyTimerSectionName by mutableStateOf("Quantitative Aptitude")
+    var isStudyTimerRunning by mutableStateOf(false)
+    private var studyTimerJob: Job? = null
+
+    // --- AI Chatbot States ---
+    val chatMessages = androidx.compose.runtime.mutableStateListOf<ChatMessage>()
+    var isChatLoading by mutableStateOf(false)
+    var chatInputText by mutableStateOf("")
 
     // --- Live UI States ---
     var isAnalyzing by mutableStateOf(false)
@@ -87,6 +102,15 @@ class SscViewModel(application: Application) : AndroidViewModel(application) {
 
         examCountdowns = repository.allExamCountdownsFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        studyNotes = repository.allStudyNotesFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        studySessions = repository.allStudySessionsFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+        // Seed initial chatbot greeting
+        clearChatHistory()
 
         localPrefsFlow = repository.preferencesFlow
             .map { it ?: AppPreferences() }
@@ -305,4 +329,144 @@ class SscViewModel(application: Application) : AndroidViewModel(application) {
             repository.clearAttempts()
         }
     }
+
+    // --- Study Notes Helpers ---
+    fun addStudyNote(title: String, content: String, category: String, keywords: String = "", isSuggestedByAi: Boolean = false, sourceUrl: String = "") {
+        viewModelScope.launch(Dispatchers.IO) {
+            val note = StudyNote(
+                title = title,
+                content = content,
+                category = category,
+                keywords = keywords,
+                isSuggestedByAi = isSuggestedByAi,
+                sourceUrl = sourceUrl
+            )
+            repository.insertStudyNote(note)
+        }
+    }
+
+    fun deleteStudyNote(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteStudyNoteById(id)
+        }
+    }
+
+    fun clearAllStudyNotes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearStudyNotes()
+        }
+    }
+
+    // --- Sectional Study Sessions Helpers ---
+    fun recordStudySession(sectionName: String, durationSeconds: Int, mode: String = "EXAM_STUDY") {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.insertStudySession(StudySession(sectionName = sectionName, durationSeconds = durationSeconds, mode = mode))
+        }
+    }
+
+    fun deleteStudySession(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.deleteStudySessionById(id)
+        }
+    }
+
+    fun clearAllStudySessions() {
+        viewModelScope.launch(Dispatchers.IO) {
+            repository.clearStudySessions()
+        }
+    }
+
+    // --- Exam Study Mode with Sectional Timer ---
+    fun startSectionalStudyTimer(section: String, minutes: Int) {
+        studyTimerSectionName = section
+        studyTimerTotalDuration = minutes * 60
+        studyTimerSecondsLeft = minutes * 60
+        isStudyTimerActive = true
+        isStudyTimerRunning = true
+        studyTimerJob?.cancel()
+        studyTimerJob = viewModelScope.launch {
+            while (studyTimerSecondsLeft > 0 && isStudyTimerRunning) {
+                delay(1000)
+                studyTimerSecondsLeft -= 1
+            }
+            if (studyTimerSecondsLeft <= 0) {
+                completeSectionalStudySession()
+            }
+        }
+    }
+
+    fun toggleStudyTimerPause() {
+        isStudyTimerRunning = !isStudyTimerRunning
+        if (isStudyTimerRunning) {
+            studyTimerJob = viewModelScope.launch {
+                while (studyTimerSecondsLeft > 0 && isStudyTimerRunning) {
+                    delay(1000)
+                    studyTimerSecondsLeft -= 1
+                }
+                if (studyTimerSecondsLeft <= 0) {
+                    completeSectionalStudySession()
+                }
+            }
+        } else {
+            studyTimerJob?.cancel()
+        }
+    }
+
+    fun completeSectionalStudySession() {
+        studyTimerJob?.cancel()
+        val elapsed = studyTimerTotalDuration - studyTimerSecondsLeft
+        if (elapsed > 2) {
+            recordStudySession(studyTimerSectionName, elapsed, "EXAM_STUDY")
+        }
+        isStudyTimerActive = false
+        isStudyTimerRunning = false
+        studyTimerSecondsLeft = 0
+    }
+
+    fun cancelSectionalStudySession() {
+        studyTimerJob?.cancel()
+        val elapsed = studyTimerTotalDuration - studyTimerSecondsLeft
+        if (elapsed > 2) {
+            recordStudySession(studyTimerSectionName, elapsed, "REVISION")
+        }
+        isStudyTimerActive = false
+        isStudyTimerRunning = false
+        studyTimerSecondsLeft = 0
+    }
+
+    // --- Chatbot Messaging Operations ---
+    fun sendChatMessage(text: String) {
+        if (text.isBlank()) return
+        chatMessages.add(ChatMessage(text = text, isFromAi = false))
+        chatInputText = ""
+        isChatLoading = true
+
+        val historyList = chatMessages.map { 
+            Content(parts = listOf(Part(text = it.text)))
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            val response = repository.chatAndSearchWithAi(text, historyList.takeLast(10))
+            viewModelScope.launch(Dispatchers.Main) {
+                chatMessages.add(ChatMessage(text = response, isFromAi = true))
+                isChatLoading = false
+            }
+        }
+    }
+
+    fun clearChatHistory() {
+        chatMessages.clear()
+        chatMessages.add(ChatMessage(
+            text = "👋 Hello Abhishek Singh! I am your AI Study Coach, integrated with real-time study notes creation and simulated Google Search backup indexes.\n\n" +
+                   "Type any topic (e.g., 'constitutional articles on fundamental rights' or 'profit and loss successive discount rules') to explore deep explanations, " +
+                   "and use the **'Save to My Study Notes'** option below the message to automatically organize and sync it offline!",
+            isFromAi = true
+        ))
+    }
 }
+
+data class ChatMessage(
+    val text: String,
+    val isFromAi: Boolean,
+    val timestamp: Long = System.currentTimeMillis()
+)

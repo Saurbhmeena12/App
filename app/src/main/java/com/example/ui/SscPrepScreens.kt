@@ -5,10 +5,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -59,7 +57,7 @@ fun SscPrepMainApp(viewModel: SscViewModel) {
 
         Scaffold(
             bottomBar = {
-                if (viewModel.activeTest == null) {
+                if (viewModel.activeTest == null && !viewModel.isStudyTimerActive) {
                     NavigationBar(
                         windowInsets = WindowInsets.navigationBars,
                         tonalElevation = 8.dp
@@ -109,10 +107,13 @@ fun SscPrepMainApp(viewModel: SscViewModel) {
                     .padding(paddingValues)
                     .background(colors.background)
             ) {
-                // If a test session is active, override other views completely
+                // If a test session or immersive study mode is active, override other views completely
                 val activeQuiz = viewModel.activeTest
+                val isStudyModeActive = viewModel.isStudyTimerActive
                 if (activeQuiz != null) {
                     ActiveQuizScreen(viewModel = viewModel, test = activeQuiz)
+                } else if (isStudyModeActive) {
+                    ActiveStudyTimerScreen(viewModel = viewModel)
                 } else {
                     AnimatedContent(
                         targetState = activeTab,
@@ -244,6 +245,8 @@ fun HomeScreen(
     prefs: AppPreferences,
     navigateToPractice: () -> Unit
 ) {
+    var homeSegment by remember { mutableStateOf("desk") }
+
     val gradientColors = listOf(
         MaterialTheme.colorScheme.primary,
         MaterialTheme.colorScheme.secondary
@@ -319,6 +322,45 @@ fun HomeScreen(
             }
         }
 
+        // Segment switch tab
+        item {
+            TabRow(
+                selectedTabIndex = if (homeSegment == "desk") 0 else 1,
+                containerColor = Color.Transparent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+            ) {
+                Tab(
+                    selected = homeSegment == "desk",
+                    onClick = { homeSegment = "desk" }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Filled.Dashboard, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Syllabus Desk", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+                Tab(
+                    selected = homeSegment == "analytics",
+                    onClick = { homeSegment = "analytics" }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Filled.BarChart, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Analytics & Reports", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+
+        if (homeSegment == "desk") {
         // Target Board Exam Countdown Widget
         item {
             if (countdowns.isNotEmpty()) {
@@ -807,6 +849,11 @@ fun HomeScreen(
                         )
                     }
                 }
+            }
+        }
+        } else {
+            item {
+                AnalyticsDashboardSegment(viewModel = viewModel)
             }
         }
     }
@@ -1363,14 +1410,8 @@ fun StudyMaterialsScreen(
     viewModel: SscViewModel,
     materials: List<StudyMaterial>
 ) {
-    var activeCategory by remember { mutableStateOf("All") }
-    var expandedMaterialId by remember { mutableStateOf<String?>(null) }
-
-    val categories = listOf("All", "Current Affairs", "English", "Quantitative Aptitude")
-
-    val filtered = materials.filter {
-        activeCategory == "All" || it.category == activeCategory
-    }
+    var librarySegment by remember { mutableStateOf("notes") }
+    val notes by viewModel.studyNotes.collectAsState()
 
     Column(
         modifier = Modifier
@@ -1378,156 +1419,55 @@ fun StudyMaterialsScreen(
             .padding(16.dp)
     ) {
         Text(
-            text = "📚 Study Materials & Daily Bulletins",
+            text = "📚 Study Hub & Library",
             fontSize = 20.sp,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "Read dynamic syllabus briefs and save files for complete offline access.",
-            fontSize = 12.sp,
+            text = "Review lessons, take custom study notes, or run sectional target study sessions.",
+            fontSize = 11.sp,
             color = Color.Gray
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Categories Chips
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        TabRow(
+            selectedTabIndex = when(librarySegment) {
+                "notes" -> 0
+                "guides" -> 1
+                "timer" -> 2
+                else -> 0
+            },
+            containerColor = Color.Transparent,
+            modifier = Modifier.fillMaxWidth().height(42.dp)
         ) {
-            categories.forEach { cat ->
-                val isSel = activeCategory == cat
-                FilterChip(
-                    selected = isSel,
-                    onClick = { activeCategory = cat },
-                    label = { Text(cat) }
-                )
+            Tab(
+                selected = librarySegment == "notes",
+                onClick = { librarySegment = "notes" }
+            ) {
+                Text("Self Notes", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Tab(
+                selected = librarySegment == "guides",
+                onClick = { librarySegment = "guides" }
+            ) {
+                Text("Study Guides", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Tab(
+                selected = librarySegment == "timer",
+                onClick = { librarySegment = "timer" }
+            ) {
+                Text("Sectional Timer", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        if (filtered.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("No resources available in this category.", color = Color.Gray)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(filtered) { mat ->
-                    val isExpanded = expandedMaterialId == mat.id
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("material_item_" + mat.id),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
-                                            Text(
-                                                text = mat.category.uppercase(),
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                            )
-                                        }
-                                        if (mat.isDownloaded) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier
-                                                    .background(Color(0xFF059669).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
-                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                                            ) {
-                                                Icon(Icons.Filled.Check, "Saved", tint = Color(0xFF059669), modifier = Modifier.size(10.dp))
-                                                Text("SAVED OFFLINE", fontSize = 9.sp, color = Color(0xFF059669), fontWeight = FontWeight.Black)
-                                            }
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = mat.title,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 15.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = mat.dateStr,
-                                        fontSize = 10.sp,
-                                        color = Color.Gray
-                                    )
-                                }
-
-                                // Download Toggle Switch
-                                IconButton(
-                                    onClick = {
-                                        if (mat.isDownloaded) {
-                                            viewModel.removeDownloadedMaterial(mat.id)
-                                        } else {
-                                            viewModel.downloadMaterialOffline(mat.id)
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = if (mat.isDownloaded) Icons.Filled.DeleteOutline else Icons.Filled.CloudDownload,
-                                        contentDescription = "Offline capability download switch",
-                                        tint = if (mat.isDownloaded) Color.Red.copy(alpha = 0.6f) else MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = mat.description,
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            OutlinedButton(
-                                onClick = { expandedMaterialId = if (isExpanded) null else mat.id },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(if (isExpanded) "Collapse Document" else "Open and Study Document")
-                            }
-
-                            if (isExpanded) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                                        .padding(12.dp)
-                                ) {
-                                    Text(
-                                        text = mat.content,
-                                        fontSize = 13.sp,
-                                        lineHeight = 18.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        when (librarySegment) {
+            "notes" -> SelfStudyNotesSegment(viewModel = viewModel, notes = notes)
+            "guides" -> CuratedGuidesSegment(viewModel = viewModel, materials = materials)
+            "timer" -> StudyTimerConfigurationSegment(viewModel = viewModel)
         }
     }
 }
@@ -1539,13 +1479,13 @@ fun AiCoachScreen(
     attempts: List<MockAttempt>,
     aiGuidance: AiGuidanceCache?
 ) {
+    var coachSegment by remember { mutableStateOf("chat") }
     val context = LocalContext.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
-            .verticalScroll(rememberScrollState())
     ) {
         Text(
             text = "🧠 Gemini AI Cognitive Mentor",
@@ -1554,112 +1494,148 @@ fun AiCoachScreen(
             color = MaterialTheme.colorScheme.primary
         )
         Text(
-            text = "Analyse your score history to produce high-priority SSC topics plans.",
+            text = "Analyse score logs or search key terms to create persistent notes.",
             fontSize = 12.sp,
             color = Color.Gray
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
 
-        // Trigger analysis card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        TabRow(
+            selectedTabIndex = if (coachSegment == "chat") 0 else 1,
+            containerColor = Color.Transparent,
+            modifier = Modifier.fillMaxWidth().height(42.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = "Generate Course Corrections Plan 🚀",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Calls the server-side Gemini 3.5 Flash engine to scan your attempts ratios and produce customized arithmetic & logic study plans.",
-                    fontSize = 11.sp,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                if (viewModel.isAnalyzing) {
-                    CircularProgressIndicator()
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Constructing adaptive schedule...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                } else {
-                    Button(
-                        onClick = { viewModel.runAiSyllabusAnalysis() },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("ai_generate_mentor_plan_btn")
-                    ) {
-                        Icon(Icons.Filled.AutoAwesome, "Sparkle")
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Analyze Weakness History")
-                    }
+            Tab(selected = coachSegment == "chat", onClick = { coachSegment = "chat" }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Chat, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("AI Study Chat", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+            }
+            Tab(selected = coachSegment == "diagnostics", onClick = { coachSegment = "diagnostics" }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.AutoAwesome, null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Syllabus Plan", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // Recommendations output
-        if (aiGuidance == null) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(Icons.Filled.Psychology, "Ai wait", tint = Color.LightGray, modifier = Modifier.size(48.dp))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "No diagnostic generated yet. Press the scan button above to generate standard schedules or Gemini plans.",
-                        color = Color.Gray,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
+        if (coachSegment == "chat") {
+            Box(modifier = Modifier.weight(1f)) {
+                AiResearchChatbotScreen(viewModel = viewModel)
             }
         } else {
-            Text(
-                text = "📌 Adaptive Recommendations Table",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = aiGuidance.recommendationText,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    if (aiGuidance.lastGeneratedTimestamp > 0L) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Divider()
+                // Trigger analysis card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "Generate Course Corrections Plan 🚀",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            textAlign = TextAlign.Center
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Last calculated: " + SimpleDateFormat("hh:mm a, MMM dd, yyyy", Locale.getDefault()).format(Date(aiGuidance.lastGeneratedTimestamp)),
-                            fontSize = 10.sp,
+                            text = "Calls the server-side Gemini 3.5 Flash engine to scan your attempts ratios and produce customized arithmetic & logic study plans.",
+                            fontSize = 11.sp,
                             color = Color.Gray,
-                            modifier = Modifier.align(Alignment.End)
+                            textAlign = TextAlign.Center
                         )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (viewModel.isAnalyzing) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Constructing adaptive schedule...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Button(
+                                onClick = { viewModel.runAiSyllabusAnalysis() },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("ai_generate_mentor_plan_btn")
+                            ) {
+                                Icon(Icons.Filled.AutoAwesome, "Sparkle")
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Analyze Weakness History")
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Recommendations output
+                if (aiGuidance == null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Filled.Psychology, "Ai wait", tint = Color.LightGray, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "No diagnostic generated yet. Press the scan button above to generate standard schedules or Gemini plans.",
+                                color = Color.Gray,
+                                fontSize = 12.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "📌 Adaptive Recommendations Table",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = aiGuidance.recommendationText,
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            if (aiGuidance.lastGeneratedTimestamp > 0L) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                HorizontalDivider()
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Last calculated: " + SimpleDateFormat("hh:mm a, MMM dd, yyyy", Locale.getDefault()).format(Date(aiGuidance.lastGeneratedTimestamp)),
+                                    fontSize = 10.sp,
+                                    color = Color.Gray,
+                                    modifier = Modifier.align(Alignment.End)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1915,6 +1891,998 @@ fun SyllabusPointRow(title: String, desc: String) {
         Column {
             Text(title, fontWeight = FontWeight.Bold, fontSize = 11.sp)
             Text(desc, fontSize = 10.sp, color = Color.Gray)
+        }
+    }
+}
+
+// ==========================================
+// NEW FEATURE USER MODULE COMPOSABLES
+// ==========================================
+
+@Composable
+fun ActiveStudyTimerScreen(viewModel: SscViewModel) {
+    val totalSec = viewModel.studyTimerTotalDuration
+    val leftSec = viewModel.studyTimerSecondsLeft
+    val phaseRatio = if (totalSec > 0) leftSec.toFloat() / totalSec.toFloat() else 0f
+    val minutes = leftSec / 60
+    val seconds = leftSec % 60
+    val formattedTime = String.format("%02d:%02d", minutes, seconds)
+    val colors = MaterialTheme.colorScheme
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colors.background)
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = "⚡ IMMERSIVE STUDY ZONE",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = colors.primary,
+                letterSpacing = 1.5.sp
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = viewModel.studyTimerSectionName.uppercase(),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Black,
+                color = colors.onBackground
+            )
+            Text(
+                text = "Keep absolute focus on your learning targets. Distractions are suppressed.",
+                fontSize = 11.sp,
+                color = Color.Gray,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
+
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(240.dp)
+            ) {
+                CircularProgressIndicator(
+                    progress = { phaseRatio },
+                    modifier = Modifier.fillMaxSize(),
+                    strokeWidth = 14.dp,
+                    color = colors.primary,
+                    trackColor = colors.primary.copy(alpha = 0.15f)
+                )
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = formattedTime,
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = colors.onBackground,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "time remaining",
+                        fontSize = 10.sp,
+                        color = Color.Gray,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(42.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = colors.surfaceVariant.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Lightbulb, "Concept", tint = Color.Yellow)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text(
+                        text = when (viewModel.studyTimerSectionName) {
+                            "Quantitative Aptitude" -> "Remember: Arithmetic answers are easier to back-solve using the options! Speed up by estimating limits."
+                            "Reasoning" -> "Syllogism rule: Focus on Venn diagrams overlaps. Never assume real-world details unless logical rules dictate."
+                            "English" -> "Grammar thumbrule: Direct-and-indirect conversions demand specific back-tense changes. Watch your plural auxiliary verbs."
+                            "General Awareness" -> "Current Affairs rule: Sum up central welfare names with corresponding state launch months."
+                            else -> "Keep joting key formula definitions onto your scrap sheet. Re-reading errors forms 90% of exam improvement!"
+                        },
+                        fontSize = 12.sp,
+                        color = colors.onSurface
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(42.dp))
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.toggleStudyTimerPause() },
+                    modifier = Modifier.testTag("study_timer_pause_btn")
+                ) {
+                    Icon(
+                        if (viewModel.isStudyTimerRunning) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                        null
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (viewModel.isStudyTimerRunning) "Pause" else "Resume")
+                }
+
+                Button(
+                    onClick = { viewModel.completeSectionalStudySession() },
+                    modifier = Modifier.testTag("study_timer_complete_btn"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669))
+                ) {
+                    Icon(Icons.Filled.Check, null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Complete Goal")
+                }
+
+                IconButton(
+                    onClick = { viewModel.cancelSectionalStudySession() },
+                    modifier = Modifier
+                        .background(colors.error.copy(alpha = 0.15f), CircleShape)
+                        .testTag("study_timer_cancel_btn")
+                ) {
+                    Icon(Icons.Filled.Close, "Exit Study", tint = colors.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StudyPacingBarChart(sessions: List<StudySession>) {
+    val dayFormat = SimpleDateFormat("EEE", Locale.getDefault())
+
+    val rawDays = (0..6).map { i ->
+        val c = Calendar.getInstance()
+        c.add(Calendar.DAY_OF_YEAR, -i)
+        c
+    }.reversed()
+
+    val dailyMinutes = rawDays.map { c ->
+        val d = Calendar.getInstance()
+        d.timeInMillis = c.timeInMillis
+        d.set(Calendar.HOUR_OF_DAY, 0)
+        d.set(Calendar.MINUTE, 0)
+        d.set(Calendar.SECOND, 0)
+        d.set(Calendar.MILLISECOND, 0)
+        val dayStart = d.timeInMillis
+        val dayEnd = dayStart + 86400000L
+
+        val daySessions = sessions.filter { it.timestamp in dayStart until dayEnd }
+        val sumSec = daySessions.sumOf { it.durationSeconds }
+        Pair(dayFormat.format(c.time), sumSec / 60)
+    }
+
+    val maxMin = dailyMinutes.maxOf { it.second }.coerceAtLeast(1)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "📊 Focused Study Minutes (Last 7 Days)",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(130.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom
+            ) {
+                dailyMinutes.forEach { (dayName, mins) ->
+                    val barWeight = if (maxMin > 0) mins.toFloat() / maxMin.toFloat() else 0f
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "${mins}m",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (mins > 0) MaterialTheme.colorScheme.primary else Color.Gray
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(0.5f)
+                                .height((barWeight * 80).coerceAtLeast(3f).dp)
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        listOf(
+                                            MaterialTheme.colorScheme.primary,
+                                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.5f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)
+                                )
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = dayName, fontSize = 9.sp, color = Color.Gray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AnalyticsDashboardSegment(viewModel: SscViewModel) {
+    val attempts by viewModel.attempts.collectAsState()
+    val sessions by viewModel.studySessions.collectAsState()
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        StudyPacingBarChart(sessions = sessions)
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "📅 Weekly Performance Audit & Analysis",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                        Text("COMPARED BASELINE", fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 4.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                val thisWeekStart = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                    set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
+                }.timeInMillis
+
+                val attemptsThisWeek = attempts.filter { it.timestamp >= thisWeekStart }
+                val sessionsThisWeek = sessions.filter { it.timestamp >= thisWeekStart }
+                val studyThisWeekMins = sessionsThisWeek.sumOf { it.durationSeconds } / 60
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Work Done This Week", fontSize = 10.sp, color = Color.Gray)
+                        Text("$studyThisWeekMins Min Study", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "${sessionsThisWeek.size} focused sessions log",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Active Readiness", fontSize = 10.sp, color = Color.Gray)
+                        Text(if (attemptsThisWeek.isEmpty()) "Need Mock Tests" else "${attemptsThisWeek.size} Tests Taken", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        val avgScore = if (attemptsThisWeek.isNotEmpty()) attemptsThisWeek.map { it.score }.average().toInt() else 0
+                        Text("Avg Score: $avgScore points", fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "🤖 AI Coach Weekly Remediation:",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = when {
+                        studyThisWeekMins == 0 -> "⚠️ You scheduled no focus timing blocks this week yet! Start with a 15-minute section Study block in the Library tab."
+                        attemptsThisWeek.isEmpty() -> "📊 Good progress on sectional readings ($studyThisWeekMins mins). However, you must take a Mock Test so that the AI score trend metrics can update!"
+                        else -> "⚡ Incredible work Abhishek Singh! Your daily study routines ($studyThisWeekMins mins) are syncing nicely with Mock Score records. General Awareness and Quantitative Aptitude pacing looks solid."
+                    },
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "📋 Local Study & Practice Records Manager",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    TextButton(onClick = { viewModel.resetAllPracticeStats() }) {
+                        Icon(Icons.Filled.DeleteSweep, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Reset All", fontSize = 11.sp)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (attempts.isEmpty() && sessions.isEmpty()) {
+                    Text(
+                        "No logs stored. Take tests or run study timer sessions to produce data streams.",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                } else {
+                    Text("Practice Attempts Log:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    attempts.take(4).forEach { att ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(att.testTitle, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text("${att.subject} • Score: ${att.score} • Accuracy: ${if(att.attemptedQuestions>0)(att.correctAnswers*100/att.attemptedQuestions) else 0}%", fontSize = 10.sp, color = Color.Gray)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Focused Timers Log:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                    sessions.take(4).forEach { ses ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(ses.sectionName, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Duration: ${ses.durationSeconds / 60}m ${ses.durationSeconds % 60}s • Type: ${ses.mode}", fontSize = 10.sp, color = Color.Gray)
+                            }
+                            IconButton(
+                                onClick = { viewModel.deleteStudySession(ses.id) },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Filled.Delete, "Delete", tint = Color.Gray, modifier = Modifier.size(12.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SelfStudyNotesSegment(viewModel: SscViewModel, notes: List<StudyNote>) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    var selectedNoteForDialog by remember { mutableStateOf<StudyNote?>(null) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "📝 Personal Notes Shelf (${notes.size})",
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Button(
+                onClick = { showAddDialog = true },
+                shape = RoundedCornerShape(12.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                modifier = Modifier.height(32.dp).testTag("create_note_btn")
+            ) {
+                Icon(Icons.Filled.Add, null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Note", fontSize = 11.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (notes.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(Icons.Filled.NoteAlt, null, tint = Color.LightGray, modifier = Modifier.size(36.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Your Study Notes shelf is empty.",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Add notes manually above, or seek help from the chatbot on the 'AI Coach' tab, which performs searches to construct ready-to-save revision notes!",
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)
+            ) {
+                items(notes) { note ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedNoteForDialog = note },
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                                    Text(note.category.uppercase(), fontSize = 8.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 4.dp))
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (note.isSuggestedByAi) {
+                                        Icon(Icons.Filled.AutoAwesome, "AI", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(12.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("AI GOOGLE SEARCH", fontSize = 8.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    IconButton(
+                                        onClick = { viewModel.deleteStudyNote(note.id) },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(Icons.Filled.Delete, "Delete", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(note.title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(note.content, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddManualNoteDialog(
+            onDismiss = { showAddDialog = false },
+            onSave = { title, content, cat ->
+                viewModel.addStudyNote(title = title, content = content, category = cat)
+                showAddDialog = false
+            }
+        )
+    }
+
+    selectedNoteForDialog?.let { note ->
+        Dialog(onDismissRequest = { selectedNoteForDialog = null }) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Badge(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                            Text(note.category.uppercase(), fontSize = 9.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(horizontal = 4.dp))
+                        }
+                        IconButton(onClick = { selectedNoteForDialog = null }, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Filled.Close, null)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(note.title, fontSize = 18.sp, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(note.content, fontSize = 13.sp, lineHeight = 18.sp)
+                    if (note.sourceUrl.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text("Search reference credits: ${note.sourceUrl}", fontSize = 10.sp, color = Color.Gray)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddManualNoteDialog(onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var content by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("Self Notes") }
+    val categories = listOf("Self Notes", "Quantitative Aptitude", "Reasoning", "English", "General Awareness")
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("📝 Add Manual Study Note", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                TextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Note Title (e.g., Trigonometry formulas)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text("Subject Category:", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    categories.forEach { cat ->
+                        FilterChip(
+                            selected = category == cat,
+                            onClick = { category = cat },
+                            label = { Text(cat, fontSize = 10.sp) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+
+                TextField(
+                    value = content,
+                    onValueChange = { content = it },
+                    label = { Text("Write notes information...") },
+                    modifier = Modifier.fillMaxWidth().height(140.dp),
+                    maxLines = 10
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Button(
+                        onClick = { if (title.isNotBlank()) onSave(title, content, category) },
+                        enabled = title.isNotBlank() && content.isNotBlank()
+                    ) { Text("Save Note") }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StudyTimerConfigurationSegment(viewModel: SscViewModel) {
+    var selectedSection by remember { mutableStateOf("Quantitative Aptitude") }
+    var selectedMinutes by remember { mutableStateOf(15) }
+
+    val sections = listOf("Quantitative Aptitude", "Reasoning", "English", "General Awareness", "Self Notes")
+    val times = listOf(5, 10, 15, 20, 30, 45, 60)
+
+    val sessions by viewModel.studySessions.collectAsState()
+    val totalFocusMinutes = sessions.sumOf { it.durationSeconds } / 60
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "⚡ Sectional Study Timer Lobby",
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = "Build deep comprehension limits by studying under scheduled exam pacing.",
+                fontSize = 11.sp,
+                color = Color.Gray
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text("1. Choose Target Study Section:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                sections.forEach { sec ->
+                    FilterChip(
+                        selected = selectedSection == sec,
+                        onClick = { selectedSection = sec },
+                        label = { Text(sec, fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Text("2. Set Section Time Limit:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                times.forEach { mins ->
+                    FilterChip(
+                        selected = selectedMinutes == mins,
+                        onClick = { selectedMinutes = mins },
+                        label = { Text("${mins} Mins", fontSize = 11.sp) }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Button(
+                onClick = { viewModel.startSectionalStudyTimer(selectedSection, selectedMinutes) },
+                modifier = Modifier.fillMaxWidth().height(48.dp).testTag("start_study_timer_btn"),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Filled.FlashOn, null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Enter Immersive Study Zone (${selectedMinutes}m)", fontWeight = FontWeight.Bold)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Total Focus Logged:", fontSize = 11.sp, color = Color.Gray)
+                Text("$totalFocusMinutes Minutes Offline", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
+}
+
+@Composable
+fun CuratedGuidesSegment(viewModel: SscViewModel, materials: List<StudyMaterial>) {
+    var activeCategory by remember { mutableStateOf("All") }
+    var expandedMaterialId by remember { mutableStateOf<String?>(null) }
+    val categories = listOf("All", "Current Affairs", "English", "Quantitative Aptitude")
+
+    val filtered = materials.filter {
+        activeCategory == "All" || it.category == activeCategory
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            categories.forEach { cat ->
+                FilterChip(
+                    selected = activeCategory == cat,
+                    onClick = { activeCategory = cat },
+                    label = { Text(cat, fontSize = 11.sp) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        if (filtered.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No resources available in this category.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 450.dp)
+            ) {
+                items(filtered) { mat ->
+                    val isExpanded = expandedMaterialId == mat.id
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("material_item_" + mat.id),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Badge(containerColor = MaterialTheme.colorScheme.secondaryContainer) {
+                                            Text(
+                                                text = mat.category.uppercase(),
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                        if (mat.isDownloaded) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .background(Color(0xFF059669).copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            ) {
+                                                Icon(Icons.Filled.Check, "Saved", tint = Color(0xFF059669), modifier = Modifier.size(10.dp))
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text("SAVED OFFLINE", fontSize = 9.sp, color = Color(0xFF059669), fontWeight = FontWeight.Black)
+                                            }
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = mat.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = mat.description,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (isExpanded && mat.isDownloaded) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                        .padding(12.dp)
+                                ) {
+                                    Text(
+                                        text = mat.content,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "Date: ${mat.dateStr} • ${mat.fileSizeMb}MB", fontSize = 11.sp, color = Color.Gray)
+                                Row {
+                                    if (mat.isDownloaded) {
+                                        TextButton(onClick = { expandedMaterialId = if (isExpanded) null else mat.id }) {
+                                            Icon(if (isExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore, null)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(if (isExpanded) "Collapse" else "Read Offline")
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        IconButton(onClick = { viewModel.removeDownloadedMaterial(mat.id) }) {
+                                            Icon(Icons.Filled.Delete, "Delete", tint = Color.Gray)
+                                        }
+                                    } else {
+                                        Button(onClick = { viewModel.downloadMaterialOffline(mat.id) }) {
+                                            Icon(Icons.Filled.Download, null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Download PDF")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AiResearchChatbotScreen(viewModel: SscViewModel) {
+    val messages = viewModel.chatMessages
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            listState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+            .padding(12.dp)
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(messages) { msg ->
+                ChatBubble(viewModel = viewModel, message = msg)
+            }
+            if (viewModel.isChatLoading) {
+                item {
+                    Row(
+                        modifier = Modifier.padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("AI Research Engine pulling Google Search summaries...", fontSize = 11.sp, color = Color.Gray)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            TextField(
+                value = viewModel.chatInputText,
+                onValueChange = { viewModel.chatInputText = it },
+                placeholder = { Text("Ask study questions...", fontSize = 12.sp) },
+                modifier = Modifier.weight(1f).testTag("chat_input_field"),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                ),
+                maxLines = 2,
+                singleLine = false
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = {
+                    if (viewModel.chatInputText.isNotBlank()) {
+                        viewModel.sendChatMessage(viewModel.chatInputText)
+                    }
+                },
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.primary, CircleShape)
+                    .testTag("chat_send_button")
+            ) {
+                Icon(Icons.Filled.Send, "Send message", tint = MaterialTheme.colorScheme.onPrimary)
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatBubble(viewModel: SscViewModel, message: ChatMessage) {
+    val colors = MaterialTheme.colorScheme
+    val isAi = message.isFromAi
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (isAi) Alignment.Start else Alignment.End
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(0.85f),
+            horizontalArrangement = if (isAi) Arrangement.Start else Arrangement.End
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isAi) colors.surface else colors.primary
+                ),
+                border = if (isAi) BorderStroke(1.dp, colors.primary.copy(alpha = 0.15f)) else null,
+                shape = RoundedCornerShape(
+                    topStart = 16.dp,
+                    topEnd = 16.dp,
+                    bottomStart = if (isAi) 4.dp else 16.dp,
+                    bottomEnd = if (isAi) 16.dp else 4.dp
+                )
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = if (isAi) "🤖 GEMINI RESEARCH COACH" else "🙋 ME (ABHISHEK SINGH)",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isAi) colors.primary else colors.onPrimary.copy(alpha = 0.8f),
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = message.text,
+                        fontSize = 13.sp,
+                        lineHeight = 17.sp,
+                        color = if (isAi) colors.onSurface else colors.onPrimary
+                    )
+
+                    if (isAi) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                val lines = message.text.split("\n")
+                                val firstHeader = lines.firstOrNull { it.trim().isNotEmpty() && !it.startsWith("#") }?.take(30) ?: "Saved AI Topic Note"
+                                viewModel.addStudyNote(
+                                    title = firstHeader,
+                                    content = message.text,
+                                    category = "General Awareness",
+                                    isSuggestedByAi = true,
+                                    sourceUrl = "Google Web Search Index"
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = colors.secondaryContainer, contentColor = colors.onSecondaryContainer)
+                        ) {
+                            Icon(Icons.Filled.Save, null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save to My Study Notes", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 }

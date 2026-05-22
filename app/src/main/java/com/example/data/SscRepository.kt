@@ -13,6 +13,8 @@ class SscRepository(private val dao: SscPrepDao) {
     val preferencesFlow: Flow<AppPreferences?> = dao.getPreferencesFlow()
     val aiGuidanceFlow: Flow<AiGuidanceCache?> = dao.getAiGuidanceFlow()
     val allExamCountdownsFlow: Flow<List<ExamCountdown>> = dao.getAllExamCountdownsFlow()
+    val allStudyNotesFlow: Flow<List<StudyNote>> = dao.getAllStudyNotesFlow()
+    val allStudySessionsFlow: Flow<List<StudySession>> = dao.getAllStudySessionsFlow()
 
     suspend fun getMockTestById(id: String): MockTest? {
         return dao.getMockTestById(id)
@@ -28,6 +30,30 @@ class SscRepository(private val dao: SscPrepDao) {
 
     suspend fun clearAttempts() {
         dao.clearAllAttempts()
+    }
+
+    suspend fun insertStudyNote(note: StudyNote): Long {
+        return dao.insertStudyNote(note)
+    }
+
+    suspend fun deleteStudyNoteById(id: Long) {
+        dao.deleteStudyNoteById(id)
+    }
+
+    suspend fun clearStudyNotes() {
+        dao.clearAllStudyNotes()
+    }
+
+    suspend fun insertStudySession(session: StudySession): Long {
+        return dao.insertStudySession(session)
+    }
+
+    suspend fun deleteStudySessionById(id: Long) {
+        dao.deleteStudySessionById(id)
+    }
+
+    suspend fun clearStudySessions() {
+        dao.clearAllStudySessions()
     }
 
     suspend fun updateStudyMaterialDownloaded(id: String, isDownloaded: Boolean) {
@@ -465,6 +491,122 @@ class SscRepository(private val dao: SscPrepDao) {
         // Add default preferences
         if (dao.getPreferences() == null) {
             dao.insertPreferences(AppPreferences(1))
+        }
+    }
+
+    // --- Core Gemini Chatbot & Study Note Generator Service ---
+    suspend fun chatAndSearchWithAi(prompt: String, chatHistory: List<Content>): String {
+        val apiKey = BuildConfig.GEMINI_API_KEY
+        val formattedPrompt = buildString {
+            append(prompt)
+            append("\n\nFormat Guideline: Organize the explanation into clear, highly readable sections using Markdown headers (###). ")
+            append("Make it suitable for copy-pasting as study notes. Include a core definition, 3 high-yield exam takeaways, and a practice question with answer. ")
+            append("If requested, simulate a Google Search reference citation list at the bottom titled 'Sources & References (Google Search Support)'.")
+        }
+
+        if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY") {
+            return getOfflineFallbackChatResponse(prompt)
+        }
+
+        return try {
+            val fullContents = chatHistory + Content(parts = listOf(Part(text = formattedPrompt)))
+            val request = GenerateContentRequest(
+                contents = fullContents,
+                systemInstruction = Content(parts = listOf(Part(text = "You are an elite SSC Coach and Google-powered Research Assistant. Respond with structured, syllabus-oriented data.")))
+            )
+            val response = RetrofitClient.service.generateContent(apiKey, request)
+            response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text
+                ?: throw Exception("Empty response from AI backend.")
+        } catch (e: Exception) {
+            e.printStackTrace()
+            "⚡ [Offline/Connection Interrupted] Failed to reach live Gemini server. Falling back:\n\n" + getOfflineFallbackChatResponse(prompt)
+        }
+    }
+
+    private fun getOfflineFallbackChatResponse(prompt: String): String {
+        val query = prompt.lowercase()
+        return when {
+            query.contains("profit") || query.contains("loss") || query.contains("discount") -> """
+                ### 📈 Topic: Advanced Profit, Loss, and Successive Discounts
+                
+                **Core Concept:**
+                Profit and Loss is a major subcategory in Quantitative Aptitude. It measures the relationships between Cost Price (CP), Selling Price (SP), Marked Price (MP), and Discount.
+                
+                **3 High-Yield Exam Takeaways:**
+                1. **Effective successive discount pattern**: Multiples discount of x% and y% is mathematically simplified into a single equivalent discount of (x + y - (xy/100))%.
+                2. **Markup Calculation**: Markup % = (Marked Price - Cost Price) / Cost Price * 100.
+                3. **Cost and Sales Equivalence**: If the cost price of M articles is equal to the selling price of N articles, the Profit/Loss percentage is calculated directly as: ((M - N) / N) * 100%. If M > N, it is a Profit; if M < N, it is a Loss.
+                
+                **Exam Practice Question:**
+                *Question:* If the selling price of 16 articles is equal to the cost price of 20 articles, find the overall gain or loss percentage?
+                *Correct Option:* 25% Benefit
+                *Explanation:* Let CP of 1 article = Re 1. CP of 20 articles = Rs 20. Net SP of 16 articles = Rs 20. CP of 16 articles = Rs 16. Net profit = SP - CP = 20 - 16 = Rs 4. Profit % = $(4 / 16) * 100 = 25\%$.
+                
+                *Sources & References (Google Search Support):*
+                - *IndiaBIX Quantitative Aptitude: Profit & Loss Theory (Simulated Search)*
+                - *SSC CGL Core Solved Mathematics - Chapter 4 (Simulated Search)*
+            """.trimIndent()
+            
+            query.contains("article") || query.contains("constitution") || query.contains("fundamental") || query.contains("polity") -> """
+                ### 🏛️ Topic: Core Indian Constitution - Articles 12 to 51A
+                
+                **Core Concept:**
+                Polity forms 25% of the SSC General Awareness section. The most tested area is Part III (Fundamental Rights) and Part IV (Directive Principles of State Policy).
+                
+                **3 High-Yield Exam Takeaways:**
+                1. **Article 19**: Guarantees Six Democratic Safeguards (Speech, Assembly, Association, Movement, Residence, and Profession).
+                2. **Article 21A**: Right to Education made mandatory for children aged 6 to 14 by the 86th Constitutional Amendment Act of 2002.
+                3. **Article 32 & 226**: Constitutional Remedial Writs. Dr. BR Ambedkar termed Article 32 the "Heart and Soul of the Constitution". High Courts issue writtens via Article 226.
+                
+                **Exam Practice Question:**
+                *Question:* Which writ can be issued by the Supreme Court to release an illegally detained individual?
+                *Correct Option:* Habeas Corpus WRIT
+                *Explanation:* Habeas Corpus literally translates to 'To have the body of', which orders the detaining authority to present the detainee before the court to judge custody validity.
+                
+                *Sources & References (Google Search Support):*
+                - *Indian Polity by M. Laxmikanth: Chapter on Writs (Simulated Search)*
+                - *Mrunal GS Prep Notes for SSC GA and Polity (Simulated Search)*
+            """.trimIndent()
+
+            query.contains("idiom") || query.contains("phrase") || query.contains("vocabulary") || query.contains("english") -> """
+                ### ✍️ Topic: High-Yield English Vocabulary & Idioms
+                
+                **Core Concept:**
+                Vocabulary questions (synonyms, antonyms, idioms, one-word substitutions) make up exactly 50% of the SSC English Tier-1 grammar section.
+                
+                **3 High-Yield Exam Takeaways:**
+                1. **"At the eleventh hour"**: Meaning: At the very last moment. Usage: *She registered for the SSC countdown at the eleventh hour.*
+                2. **"To burn the candle at both ends"**: Meaning: To work extremely hard, typically sacrificing sleep. Usage: *Abhishek Singh is burning the candle at both ends to clear CGL Tier-1.*
+                3. **"Barking up the wrong tree"**: Meaning: Accusing or looking in the wrong place. Usage: *If you are preparing for SSC by memorizing everything without logical formulas, you are barking up the wrong tree.*
+                
+                **Exam Practice Question:**
+                *Question:* Correctly specify the meaning of the idiom: "Take with a grain of salt"?
+                *Correct Option:* To understand with a degree of healthy skepticism.
+                
+                *Sources & References (Google Search Support):*
+                - *Oxford Dictionary of English Idioms (Simulated Search)*
+                - *S.P. Bakshi English Objective Prep Guide for Tier-1 (Simulated Search)*
+            """.trimIndent()
+
+            else -> """
+                ### 💡 Topic: Adaptive SSC Syllabus Insights for: `${prompt.take(40)}...`
+                
+                **Core Concept:**
+                Syllabus comprehension is the first milestone. The SSC exam demands precise historical retention, quick mental arithmetic, and fast grammar troubleshooting.
+                
+                **3 High-Yield Exam Takeaways:**
+                1. **Double Check Negatives**: SSC awards 2 marks for a correct response, but takes away 0.50 marks for every incorrect prompt! Do not guess.
+                2. **Pacing Ratios**: Spend 10 mins on General Awareness, 15 mins on English, 15 mins on Reasoning, and 20 mins on Quantitative Aptitude.
+                3. **PYQ Dominance**: 70% of questions in reasoning, grammar rules, and arithmetic are direct structural replicates from papers of the last five years.
+                
+                **Exam Practice Question:**
+                *Question:* What is the ideal attempt target to remain above the expected cutoff?
+                *Correct Option:* 78 to 85 Questions with 90%+ Accuracy.
+                
+                *Sources & References (Google Search Support):*
+                - *SSC Official Syllabus Bulletins (Simulated Search)*
+                - *Expert Prep Forums Study Recommendations (Simulated Search)*
+            """.trimIndent()
         }
     }
 }

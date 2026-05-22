@@ -62,4 +62,30 @@ interface SscPrepDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertExamCountdowns(countdowns: List<ExamCountdown>)
+
+    // --- Study Notes ---
+    @Query("SELECT * FROM study_notes ORDER BY timestamp DESC")
+    fun getAllStudyNotesFlow(): Flow<List<StudyNote>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudyNote(note: StudyNote): Long
+
+    @Query("DELETE FROM study_notes WHERE id = :id")
+    suspend fun deleteStudyNoteById(id: Long)
+
+    @Query("DELETE FROM study_notes")
+    suspend fun clearAllStudyNotes()
+
+    // --- Study Sessions ---
+    @Query("SELECT * FROM study_sessions ORDER BY timestamp DESC")
+    fun getAllStudySessionsFlow(): Flow<List<StudySession>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertStudySession(session: StudySession): Long
+
+    @Query("DELETE FROM study_sessions WHERE id = :id")
+    suspend fun deleteStudySessionById(id: Long)
+
+    @Query("DELETE FROM study_sessions")
+    suspend fun clearAllStudySessions()
 }

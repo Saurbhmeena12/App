@@ -84,3 +84,24 @@ data class MockQuestion(
     val correctAnswerIndex: Int, // 0 to 3
     val solutionExplanation: String
 )
+
+@Entity(tableName = "study_notes")
+data class StudyNote(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val title: String,
+    val content: String,
+    val category: String, // "Quantitative Aptitude", "Reasoning", "English", "General Awareness", "Self Notes"
+    val keywords: String = "",
+    val isSuggestedByAi: Boolean = false,
+    val sourceUrl: String = "",
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "study_sessions")
+data class StudySession(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val sectionName: String, // "Quantitative Aptitude", "Reasoning", "English", "General Awareness"
+    val durationSeconds: Int,
+    val mode: String = "EXAM_STUDY", // "EXAM_STUDY", "REVISION", "ACTIVE_PRACTICE"
+    val timestamp: Long = System.currentTimeMillis()
+)
