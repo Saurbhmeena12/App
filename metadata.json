@@ -1,0 +1,6 @@
+{
+  "name": "SSC Prep Mastery",
+  "description": "Adaptive SSC exam preparation with mock tests, PYQs, detailed analytics, daily current affairs, and Gemini AI weakness analyzer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
