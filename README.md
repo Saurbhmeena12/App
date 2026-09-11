@@ -201,7 +201,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Author
 
-**Saurabh Meena** - Learning App Developer
+**Saurabh Nareda** - Learning App Developer
 
 ## Support
 
